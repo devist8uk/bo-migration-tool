@@ -14,8 +14,16 @@ export function useProjects(userId) {
       return
     }
 
+    if (!supabase) {
+      console.error('Supabase client not initialized')
+      setError('Database connection not available')
+      setLoading(false)
+      return
+    }
+
     try {
       setLoading(true)
+      console.log('Fetching projects for user:', userId)
 
       // Fetch projects
       const { data: projectsData, error: projectsError } = await supabase
@@ -24,25 +32,38 @@ export function useProjects(userId) {
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
 
-      if (projectsError) throw projectsError
+      if (projectsError) {
+        console.error('Projects fetch error:', projectsError)
+        throw projectsError
+      }
+      console.log('Projects fetched:', projectsData?.length || 0)
 
       // Fetch developers and reports for all projects
       const projectIds = projectsData.map(p => p.id)
 
-      const [developersResult, reportsResult] = await Promise.all([
-        supabase
-          .from('developers')
-          .select('*')
-          .in('project_id', projectIds),
-        supabase
-          .from('reports')
-          .select('*')
-          .in('project_id', projectIds)
-          .order('created_at', { ascending: true })
-      ])
+      let developersData = []
+      let reportsData = []
 
-      if (developersResult.error) throw developersResult.error
-      if (reportsResult.error) throw reportsResult.error
+      // Only fetch related data if there are projects
+      if (projectIds.length > 0) {
+        const [developersResult, reportsResult] = await Promise.all([
+          supabase
+            .from('developers')
+            .select('*')
+            .in('project_id', projectIds),
+          supabase
+            .from('reports')
+            .select('*')
+            .in('project_id', projectIds)
+            .order('created_at', { ascending: true })
+        ])
+
+        if (developersResult.error) throw developersResult.error
+        if (reportsResult.error) throw reportsResult.error
+
+        developersData = developersResult.data || []
+        reportsData = reportsResult.data || []
+      }
 
       // Combine data
       const fullProjects = projectsData.map(project => ({
@@ -54,14 +75,14 @@ export function useProjects(userId) {
         lead: project.lead || '',
         startDate: project.start_date || '',
         archived: project.archived || false,
-        developers: (developersResult.data || [])
+        developers: developersData
           .filter(d => d.project_id === project.id)
           .map(d => ({
             id: d.id,
             name: d.name,
             daysPerWeek: d.days_per_week || 5
           })),
-        reports: (reportsResult.data || [])
+        reports: reportsData
           .filter(r => r.project_id === project.id)
           .map(r => ({
             id: r.id,

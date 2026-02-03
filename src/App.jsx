@@ -1,5 +1,5 @@
 // BO Migration Tool v6.3 - Supabase Edition
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Upload, FileText, Database, AlertTriangle, Copy, ClipboardCheck, Sparkles, X, Trash2, ChevronDown, ChevronRight, LogOut, User, Mail, Lock, ArrowRight, Menu, Home, Plus, ChevronLeft, Folder, Edit3, Calendar, Users, Building, Clock, CheckCircle, Circle, PlayCircle, TestTube, Search, Archive, CheckSquare, Square, Files } from 'lucide-react';
 import { useAuth } from './lib/useAuth';
 import { useProjects } from './lib/useProjects';
@@ -18,6 +18,186 @@ const isLikelyGarbage = (str) => {
   if (/^\d+$/.test(str) || /\d{6,}/.test(str)) return true;
   const noise = ['the','from','above','below','flat','roof','wall','door','bathroom','kitchen','toilet','boiler'];
   return noise.includes(str.toLowerCase());
+};
+
+// Debounced input component for text fields that save to database
+const DebouncedInput = ({ value: initialValue, onChange, debounceMs = 500, ...props }) => {
+  const [value, setValue] = useState(initialValue);
+  const timeoutRef = useRef(null);
+
+  useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
+
+  const handleChange = (e) => {
+    const newValue = e.target.value;
+    setValue(newValue);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      onChange(newValue);
+    }, debounceMs);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return <input {...props} value={value} onChange={handleChange} />;
+};
+
+// Debounced textarea component
+const DebouncedTextarea = ({ value: initialValue, onChange, debounceMs = 500, ...props }) => {
+  const [value, setValue] = useState(initialValue);
+  const timeoutRef = useRef(null);
+
+  useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
+
+  const handleChange = (e) => {
+    const newValue = e.target.value;
+    setValue(newValue);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      onChange(newValue);
+    }, debounceMs);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return <textarea {...props} value={value} onChange={handleChange} />;
+};
+
+// Project Modal Component - defined outside App to prevent re-creation
+const ProjectModal = ({ isNew, editingProject, setEditingProject, onSave, onClose }) => {
+  if (!editingProject) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+        <h3 className="font-semibold text-lg mb-4">{isNew ? 'Create New Project' : 'Edit Project'}</h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Project Name *</label>
+            <input
+              type="text"
+              value={editingProject.name || ''}
+              onChange={(e) => setEditingProject(p => ({ ...p, name: e.target.value }))}
+              placeholder="e.g. Repairs Migration 2026"
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Client / Council</label>
+            <div className="relative">
+              <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={editingProject.client || ''}
+                onChange={(e) => setEditingProject(p => ({ ...p, client: e.target.value }))}
+                placeholder="e.g. Southwark Council"
+                className="w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Project Lead</label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={editingProject.lead || ''}
+                onChange={(e) => setEditingProject(p => ({ ...p, lead: e.target.value }))}
+                placeholder="e.g. Sarah Johnson"
+                className="w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="date"
+                  value={editingProject.startDate || ''}
+                  onChange={(e) => setEditingProject(p => ({ ...p, startDate: e.target.value }))}
+                  className="w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Developers</label>
+            <div className="space-y-2">
+              {editingProject.developers?.map((dev, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    value={dev.name}
+                    onChange={(e) => setEditingProject(p => ({
+                      ...p,
+                      developers: p.developers.map((d, i) => i === idx ? { ...d, name: e.target.value } : d)
+                    }))}
+                    placeholder="Name"
+                    className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="7"
+                      value={dev.daysPerWeek}
+                      onChange={(e) => setEditingProject(p => ({
+                        ...p,
+                        developers: p.developers.map((d, i) => i === idx ? { ...d, daysPerWeek: parseInt(e.target.value) || 1 } : d)
+                      }))}
+                      className="w-16 px-2 py-2 border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-xs text-gray-500">d/wk</span>
+                  </div>
+                  <button
+                    onClick={() => setEditingProject(p => ({ ...p, developers: p.developers.filter((_, i) => i !== idx) }))}
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => setEditingProject(p => ({ ...p, developers: [...(p.developers || []), { name: '', daysPerWeek: 5 }] }))}
+                className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-blue-400 hover:text-blue-500 flex items-center justify-center gap-1"
+              >
+                <Plus className="w-4 h-4" /> Add Developer
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end mt-6">
+          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+          <button onClick={onSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">{isNew ? 'Create' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const LoginPage = ({ onLogin, onSignUp, authLoading }) => {
@@ -351,6 +531,12 @@ export default function App() {
     setEditingProject(null);
   };
 
+  const closeProjectModal = () => {
+    setShowNewProject(false);
+    setShowEditProject(false);
+    setEditingProject(null);
+  };
+
   const handleDuplicateProject = async (p) => {
     await duplicateProjectDB(p.id);
   };
@@ -382,6 +568,7 @@ export default function App() {
     setSelectedReports(s => { const n = new Set(s); n.delete(id); return n; });
   };
 
+  // Debounced update for text fields
   const updateReport = async (reportId, field, value) => {
     await updateReportDB(reportId, field, value);
   };
@@ -644,65 +831,19 @@ export default function App() {
   const totalReports = activeProjects.reduce((s, p) => s + p.reports.length, 0);
   const totalDays = activeProjects.reduce((s, p) => s + p.reports.reduce((x, r) => x + r.days, 0), 0);
 
-  const ProjectModal = ({ isNew }) => (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
-        <h3 className="font-semibold text-lg mb-4">{isNew ? 'Create New Project' : 'Edit Project'}</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Project Name *</label>
-            <input type="text" value={editingProject?.name || ''} onChange={(e) => setEditingProject(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Repairs Migration 2026" className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Client / Council</label>
-            <div className="relative">
-              <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input type="text" value={editingProject?.client || ''} onChange={(e) => setEditingProject(p => ({ ...p, client: e.target.value }))} placeholder="e.g. Southwark Council" className="w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Project Lead</label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input type="text" value={editingProject?.lead || ''} onChange={(e) => setEditingProject(p => ({ ...p, lead: e.target.value }))} placeholder="e.g. Sarah Johnson" className="w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input type="date" value={editingProject?.startDate || ''} onChange={(e) => setEditingProject(p => ({ ...p, startDate: e.target.value }))} className="w-full pl-10 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Developers</label>
-            <div className="space-y-2">
-              {editingProject?.developers?.map((dev, idx) => (
-                <div key={idx} className="flex gap-2 items-center">
-                  <input type="text" value={dev.name} onChange={(e) => setEditingProject(p => ({ ...p, developers: p.developers.map((d, i) => i === idx ? { ...d, name: e.target.value } : d) }))} placeholder="Name" className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  <div className="flex items-center gap-1">
-                    <input type="number" min="1" max="7" value={dev.daysPerWeek} onChange={(e) => setEditingProject(p => ({ ...p, developers: p.developers.map((d, i) => i === idx ? { ...d, daysPerWeek: parseInt(e.target.value) || 1 } : d) }))} className="w-16 px-2 py-2 border rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <span className="text-xs text-gray-500">d/wk</span>
-                  </div>
-                  <button onClick={() => setEditingProject(p => ({ ...p, developers: p.developers.filter((_, i) => i !== idx) }))} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><X className="w-4 h-4" /></button>
-                </div>
-              ))}
-              <button onClick={() => setEditingProject(p => ({ ...p, developers: [...(p.developers || []), { name: '', daysPerWeek: 5 }] }))} className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-blue-400 hover:text-blue-500 flex items-center justify-center gap-1"><Plus className="w-4 h-4" /> Add Developer</button>
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-2 justify-end mt-6">
-          <button onClick={() => { setShowNewProject(false); setShowEditProject(false); setEditingProject(null); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-          <button onClick={saveProject} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">{isNew ? 'Create' : 'Save'}</button>
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-slate-100 flex">
+      {/* Project Modal */}
+      {(showNewProject || showEditProject) && (
+        <ProjectModal
+          isNew={showNewProject}
+          editingProject={editingProject}
+          setEditingProject={setEditingProject}
+          onSave={saveProject}
+          onClose={closeProjectModal}
+        />
+      )}
+
       <div className={`bg-slate-900 text-white flex flex-col transition-all duration-300 ${sidebarExpanded ? 'w-64' : 'w-16'}`}>
         <div className="p-4 flex items-center justify-between border-b border-slate-700">
           {sidebarExpanded && <div className="flex items-center gap-2"><Database className="w-6 h-6 text-blue-400" /><span className="font-bold text-sm">BO Migration</span></div>}
@@ -749,8 +890,6 @@ export default function App() {
         </header>
 
         <main className="flex-1 p-6 overflow-auto">
-          {(showNewProject || showEditProject) && <ProjectModal isNew={showNewProject} />}
-
           {showExport && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
@@ -1072,13 +1211,30 @@ export default function App() {
                                 </div>
                                 <div>
                                   <label className="block text-xs text-gray-500 mb-1">Power BI Report Name</label>
-                                  <input type="text" value={r.pbiReportName || ''} onChange={e => updateReport(r.id, 'pbiReportName', e.target.value)} placeholder="New report name in PBI..." className="w-full text-sm px-2 py-1.5 border rounded-lg" />
+                                  <DebouncedInput
+                                    type="text"
+                                    value={r.pbiReportName || ''}
+                                    onChange={(value) => updateReport(r.id, 'pbiReportName', value)}
+                                    placeholder="New report name in PBI..."
+                                    className="w-full text-sm px-2 py-1.5 border rounded-lg"
+                                  />
                                 </div>
                               </div>
                               <div className="grid grid-cols-4 gap-3">
                                 <div><label className="block text-xs text-gray-500 mb-1">Assigned To</label><select value={r.assignedTo || ''} onChange={e => updateReport(r.id, 'assignedTo', e.target.value)} className="w-full text-sm px-2 py-1.5 border rounded-lg"><option value="">Unassigned</option>{activeProject.developers?.map(d => <option key={d.name} value={d.name}>{d.name} ({d.daysPerWeek}d/wk)</option>)}</select></div>
                                 <div><label className="block text-xs text-gray-500 mb-1">Est. Days</label><input type="text" readOnly value={r.days} className="w-full text-sm px-2 py-1.5 border rounded-lg bg-gray-50" /></div>
-                                <div><label className="block text-xs text-gray-500 mb-1">Actual Days</label><input type="number" step="0.5" min="0" value={r.actualDays || ''} onChange={e => updateReport(r.id, 'actualDays', e.target.value)} placeholder="0" className="w-full text-sm px-2 py-1.5 border rounded-lg" /></div>
+                                <div>
+                                  <label className="block text-xs text-gray-500 mb-1">Actual Days</label>
+                                  <DebouncedInput
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    value={r.actualDays || ''}
+                                    onChange={(value) => updateReport(r.id, 'actualDays', value)}
+                                    placeholder="0"
+                                    className="w-full text-sm px-2 py-1.5 border rounded-lg"
+                                  />
+                                </div>
                                 <div><label className="block text-xs text-gray-500 mb-1">Variance</label><input type="text" readOnly value={r.actualDays ? ((parseFloat(r.actualDays) - r.days) > 0 ? '+' : '') + (parseFloat(r.actualDays) - r.days).toFixed(1) : '—'} className={`w-full text-sm px-2 py-1.5 border rounded-lg bg-gray-50 ${r.actualDays && parseFloat(r.actualDays) > r.days ? 'text-red-600' : 'text-green-600'}`} /></div>
                               </div>
                               <div className="grid grid-cols-2 gap-3">
@@ -1110,7 +1266,15 @@ export default function App() {
                                   {r.signedOff && <p className="text-xs text-gray-500 mt-1">{r.signedOffDate}</p>}
                                 </div>
                               </div>
-                              <div><label className="block text-xs text-gray-500 mb-1">Notes</label><textarea value={r.notes || ''} onChange={e => updateReport(r.id, 'notes', e.target.value)} placeholder="Add notes, blockers, dependencies..." className="w-full text-sm px-2 py-1.5 border rounded-lg h-16" /></div>
+                              <div>
+                                <label className="block text-xs text-gray-500 mb-1">Notes</label>
+                                <DebouncedTextarea
+                                  value={r.notes || ''}
+                                  onChange={(value) => updateReport(r.id, 'notes', value)}
+                                  placeholder="Add notes, blockers, dependencies..."
+                                  className="w-full text-sm px-2 py-1.5 border rounded-lg h-16"
+                                />
+                              </div>
                               <div className="bg-gray-50 rounded-lg p-3 text-xs space-y-3">
                                 <div className="grid grid-cols-4 gap-4">
                                   <div><span className="text-gray-500">Fields:</span> {r.fieldAliases?.length || 0}</div>
